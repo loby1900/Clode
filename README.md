@@ -1,37 +1,96 @@
-# XFONX
+# Clode AI Workbench
 
-تطبيق مشاركة صور متكامل (فيد، بروفايل، لايك، تعليقات، متابعة) بهوية بصرية مستقلة تمامًا — متاح كموقع وكتطبيق أندرويد حقيقي (APK)، من غير أي تكلفة.
+A secure, project-aware AI development workspace built for real provider integrations, project inspection, and controlled local workspaces.
 
-## هيكل المشروع
+## What this app includes
 
-| المجلد | الوصف |
-|---|---|
-| [`server/`](server) | السيرفر الخلفي (Node.js + Express + SQLite) + الموقع نفسه. قابل للتشغيل محليًا أو نشره مجانًا على [Render](https://render.com) بملف `server/render.yaml` الجاهز. |
-| [`app/`](app) | غلاف أندرويد حقيقي للموقع مبني بـ [Capacitor](https://capacitorjs.com) — نفس الموقع لكن كتطبيق أندرويد (APK) له أيقونة واسم وشاشة فتح خاصة بـ XFONX. |
-| [`.github/workflows/build-apk.yml`](.github/workflows/build-apk.yml) | أتمتة GitHub Actions (مجانية) بتبني ملف الـ APK أوتوماتيك كل ما فيه تحديث، وتحطه كـ [Release](../../releases) جاهز للتحميل مباشرة. |
+- Provider configuration for OpenAI-compatible endpoints and custom API URLs
+- Encrypted credential storage on the server side
+- Project creation and file tree browsing in a local workspace
+- Chat interface that sends requests to the configured provider
+- Truthful validation and safe error handling for failed or blocked connections
+- Secure URL checks to reduce SSRF and private network misuse
+- Responsive dark/light interface with project and file panels
 
-## خطوة واحدة متبقية: نشر السيرفر (مجانًا)
+## Important truthfulness note
 
-عشان الـ APK يشتغل فعليًا (تسجيل حسابات، فيد، صور حقيقية)، لازم السيرفر يكون شغال أونلاين على رابط ثابت (مش بس محليًا). ده بياخد دقيقتين:
+This product is production-minded but not a fake demo. It does not secretly claim a provider is connected or working unless the user actually configured credentials and the backend receives a valid response. A live AI chat request requires a working provider endpoint, model access, and valid credentials from the user environment.
 
-1. روح على [render.com](https://render.com) واعمل حساب مجاني (من غير كارت ائتمان).
-2. من الداشبورد: **New → Blueprint**، واختار الريبو ده (`loby1900/Clode`) — Render هيلاقي ملف `server/render.yaml` تلقائيًا ويعرض عليك تنشر الخدمة.
-3. اضغط **Apply** / **Deploy**. بعد ما ينتهي (~2-3 دقايق) هتلاقي رابط زي `https://xfonx.onrender.com`.
-4. ارجع لإعدادات الريبو ده على GitHub: **Settings → Secrets and variables → Actions → Variables → New repository variable**، اسمها `XFONX_BACKEND_URL` وقيمتها الرابط اللي طلع من Render.
-5. شغّل الأتمتة تاني من تبويب **Actions** (اختار "Build XFONX Android APK" → Run workflow) — هيبني الـ APK ومعاه رابط السيرفر الحقيقي مضمّن جواه.
+## Quick start
 
-⚠️ ملحوظة: الخطة المجانية في Render بتعمل "نوم" للسيرفر لو مفيش زيارات لفترة (أول طلب بعد النوم ممكن ياخد شوية ثواني إضافية عشان يصحى)، وممكن الداتا تتصفّر لو اتعمل redeploy لأن القرص مش دائم في الخطة المجانية. ده قيد طبيعي لأي استضافة مجانية تمامًا، مفيش حل مجاني بديل أفضل منه دلوقتي.
-
-## تحميل الـ APK
-
-كل مرة الأتمتة تشتغل بنجاح، هتلاقي ملف الـ APK جاهز للتحميل من [صفحة Releases](../../releases) — دور على أحدث إصدار اسمه "XFONX — آخر نسخة APK"، حمّل ملف `app-debug.apk`، وثبّته على موبايلك (هيطلب منك تفعيل "التثبيت من مصادر غير معروفة" أول مرة بس).
-
-## التشغيل محليًا (اختياري، للتجربة بدون نشر)
+1. Install dependencies
 
 ```bash
 cd server
 npm install
 cp .env.example .env
+```
+
+2. Update values in `.env` for your environment
+
+```dotenv
+PORT=3000
+JWT_SECRET=change-this-to-a-long-random-string
+SECRET_KEY=change-this-to-a-long-random-string
+OPENAI_COMPATIBLE_BASE_URL=https://api.openai.com/v1
+```
+
+3. Start the app
+
+```bash
 npm start
 ```
-افتح `http://localhost:3000`.
+
+Open `http://localhost:3000`.
+
+## Core flows
+
+### 1. Connect a provider
+
+- Open the Integrations panel.
+- Enter the provider name, base URL, model, and API key.
+- Use the Test connection action to validate the endpoint.
+- The app will return a truthful success, authentication error, or inconclusive result.
+
+### 2. Create a project
+
+- Use the Projects panel to create a workspace.
+- Files are stored under `server/data/projects/<project-id>/`.
+- You can open files, edit them, and save them back to disk.
+
+### 3. Chat with the configured model
+
+- The assistant sends project context and the user prompt to the configured provider.
+- It uses the first connected provider if none is explicitly selected.
+- If no provider is configured, the app returns a clear configuration message instead of a fake success.
+
+## Security model
+
+- API keys are stored encrypted with a server-side secret.
+- URL validation blocks unsafe schemes and private-network SSRF targets unless explicitly allowed as local.
+- Uploaded project content and provider configuration are kept server-side rather than embedded in the browser bundle.
+- The app is designed for local-first operation and human approval for destructive actions.
+
+## Testing
+
+Run the backend checks:
+
+```bash
+cd server
+npm test
+```
+
+## Limitations
+
+- Real AI execution depends on user-owned credentials and provider access.
+- Some models or endpoints may require different request formats or additional headers.
+- This repository does not provide a cloud deployment or external AI account by default.
+- Image generation, browser automation, and game workflows are intentionally surfaced as configuration-dependent features rather than pretending they are universal.
+
+## Recommended next improvements
+
+- Add real project import and Git integration.
+- Add prompt templates and task execution history.
+- Add a sandboxed worker for build, lint, and test commands.
+- Add provider-specific adapters for Anthropic, Azure OpenAI, Gemini, and local model servers.
+- Add project indexing and RAG features with explicit user approval.

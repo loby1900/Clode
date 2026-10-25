@@ -1,127 +1,224 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>XFONX</title>
-<link rel="stylesheet" href="/css/style.css" />
-</head>
-<body>
-  <div class="auth-wrap">
-    <div class="auth-logo">
-      <div class="brand-mark">
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M5 5L19 19M19 5L5 19" stroke="white" stroke-width="3.2" stroke-linecap="round"/>
-        </svg>
-      </div>
-      <h1>XFONX</h1>
-      <p>شارك لحظاتك مع اللي يهموك</p>
-    </div>
+require("dotenv").config();
+const path = require("path");
+const express = require("express");
+const cors = require("cors");
 
-    <div class="card">
-      <div class="error-msg" id="errorBox"></div>
+const db = require("./db");
+const { uploadsDir } = require("./middleware/upload");
+const authRoutes = require("./routes/auth");
+const postRoutes = require("./routes/posts");
+const userRoutes = require("./routes/users");
+const { encryptText, decryptText } = require("./crypto");
+const { testProviderConnection, callProviderChat } = require("./providerService");
+const {
+  createProject,
+  deleteProject,
+  getProject,
+  listAllFiles,
+  listProjects,
+  readProjectFile,
+  writeProjectFile
+} = require("./projectService");
 
-      <form id="loginForm">
-        <div class="field">
-          <label>اسم المستخدم أو البريد الإلكتروني</label>
-          <input type="text" id="loginId" autocomplete="username" required />
-        </div>
-        <div class="field">
-          <label>كلمة المرور</label>
-          <input type="password" id="loginPw" autocomplete="current-password" required />
-        </div>
-        <button type="submit" class="btn-primary" id="loginBtn">تسجيل الدخول</button>
-      </form>
+const app = express();
+const PORT = Number(process.env.PORT || 3000);
 
-      <form id="registerForm" style="display:none">
-        <div class="field">
-          <label>اسم المستخدم</label>
-          <input type="text" id="regUsername" placeholder="حروف وأرقام، 3-20 حرف" required />
-        </div>
-        <div class="field">
-          <label>البريد الإلكتروني</label>
-          <input type="email" id="regEmail" required />
-        </div>
-        <div class="field">
-          <label>كلمة المرور</label>
-          <input type="password" id="regPw" placeholder="6 أحرف على الأقل" required />
-        </div>
-        <button type="submit" class="btn-primary" id="regBtn">إنشاء حساب</button>
-      </form>
+app.use(cors());
+app.use(express.json({ limit: "5mb" }));
+app.use(express.urlencoded({ extended: true }));
 
-      <div class="switch-mode">
-        <span id="switchText">معندكش حساب؟</span>
-        <button type="button" id="switchBtn">اعمل حساب جديد</button>
-      </div>
-    </div>
-  </div>
+app.use(express.static(path.join(__dirname, "..", "public")));
+app.use("/uploads", express.static(uploadsDir));
 
-  <script src="/js/api.js"></script>
-  <script>
-    if (API.token()) window.location.href = "/feed.html";
+app.use("/api/auth", authRoutes);
+app.use("/api/posts", postRoutes);
+app.use("/api/users", userRoutes);
 
-    const loginForm = document.getElementById("loginForm");
-    const registerForm = document.getElementById("registerForm");
-    const switchBtn = document.getElementById("switchBtn");
-    const switchText = document.getElementById("switchText");
-    const errorBox = document.getElementById("errorBox");
-    let mode = "login";
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true, app: "Clode AI Workbench", version: "1.0.0" });
+});
 
-    function showError(msg) {
-      errorBox.textContent = msg;
-      errorBox.classList.add("show");
+app.get("/api/providers", (_req, res) => {
+  const rows = db.prepare("SELECT * FROM ai_provider_connections ORDER BY updated_at DESC").all();
+  const sanitizedRows = rows.map((row) => ({
+    ...row,
+    api_key: undefined,
+    api_key_cipher: undefined,
+    apiKey: null
+  }));
+  res.json({ providers: sanitizedRows });
+});
+
+app.post("/api/providers", async (req, res) => {
+  try {
+    const { name, providerType, baseUrl, apiKey, modelId, connectionLabel, allowLocal } = req.body || {};
+    if (!name || !providerType || !baseUrl) {
+      return res.status(400).json({ error: "Name, provider type, and base URL are required." });
     }
-    function clearError() {
-      errorBox.classList.remove("show");
+    const { isAllowedProviderUrl } = require("./providerService");
+    if (!isAllowedProviderUrl(baseUrl, Boolean(allowLocal))) {
+      return res.status(400).json({ error: "Base URL is invalid or blocked. Use a trusted URL and choose local mode only for local endpoints." });
     }
 
-    switchBtn.addEventListener("click", () => {
-      clearError();
-      mode = mode === "login" ? "register" : "login";
-      loginForm.style.display = mode === "login" ? "block" : "none";
-      registerForm.style.display = mode === "register" ? "block" : "none";
-      switchText.textContent = mode === "login" ? "معندكش حساب؟" : "عندك حساب بالفعل؟";
-      switchBtn.textContent = mode === "login" ? "اعمل حساب جديد" : "سجّل دخولك";
-    });
+    const id = String(req.body.id || require("crypto").randomUUID());
+    const safeApiKey = apiKey ? encryptText(apiKey) : null;
+    db.prepare(`
+      INSERT INTO ai_provider_connections (id, name, provider_type, base_url, api_key_cipher, model_id, connection_label, allow_local, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        provider_type = excluded.provider_type,
+        base_url = excluded.base_url,
+        api_key_cipher = excluded.api_key_cipher,
+        model_id = excluded.model_id,
+        connection_label = excluded.connection_label,
+        allow_local = excluded.allow_local,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(id, String(name).trim(), String(providerType).trim(), String(baseUrl).trim(), safeApiKey, modelId ? String(modelId).trim() : null, connectionLabel ? String(connectionLabel).trim() : null, allowLocal ? 1 : 0);
 
-    loginForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      clearError();
-      const btn = document.getElementById("loginBtn");
-      btn.disabled = true;
-      try {
-        const identifier = document.getElementById("loginId").value.trim();
-        const password = document.getElementById("loginPw").value;
-        const data = await API.login(identifier, password);
-        API.setToken(data.token);
-        API.setUser(data.user);
-        window.location.href = "/feed.html";
-      } catch (err) {
-        showError(err.message);
-      } finally {
-        btn.disabled = false;
-      }
-    });
+    res.status(201).json({ ok: true, provider: { id, name, providerType, baseUrl, modelId, connectionLabel, allowLocal } });
+  } catch (error) {
+    console.error("provider-create-error", error);
+    res.status(500).json({ error: error.message || "Unable to save provider settings." });
+  }
+});
 
-    registerForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      clearError();
-      const btn = document.getElementById("regBtn");
-      btn.disabled = true;
-      try {
-        const username = document.getElementById("regUsername").value.trim();
-        const email = document.getElementById("regEmail").value.trim();
-        const password = document.getElementById("regPw").value;
-        const data = await API.register(username, email, password);
-        API.setToken(data.token);
-        API.setUser(data.user);
-        window.location.href = "/feed.html";
-      } catch (err) {
-        showError(err.message);
-      } finally {
-        btn.disabled = false;
-      }
-    });
-  </script>
-</body>
-</html>
+app.post("/api/providers/test", async (req, res) => {
+  try {
+    const config = req.body || {};
+    const result = await testProviderConnection(config);
+    res.status(result.status === "error" ? 400 : 200).json(result);
+  } catch (error) {
+    res.status(500).json({ status: "error", code: "TEST_FAILED", message: error.message || "Connection test failed." });
+  }
+});
+
+app.delete("/api/providers/:id", (req, res) => {
+  const { id } = req.params;
+  const row = db.prepare("SELECT id FROM ai_provider_connections WHERE id = ?").get(id);
+  if (!row) return res.status(404).json({ error: "Provider not found." });
+  db.prepare("DELETE FROM ai_provider_connections WHERE id = ?").run(id);
+  res.json({ ok: true, deleted: id });
+});
+
+app.get("/api/projects", (_req, res) => {
+  res.json({ projects: listProjects() });
+});
+
+app.post("/api/projects", (req, res) => {
+  try {
+    const { name, description } = req.body || {};
+    const project = createProject({ name, description });
+    res.status(201).json({ project });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "Unable to create project." });
+  }
+});
+
+app.delete("/api/projects/:id", (req, res) => {
+  try {
+    const result = deleteProject(req.params.id);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error.message || "Unable to delete project." });
+  }
+});
+
+app.get("/api/projects/:id/files", (req, res) => {
+  try {
+    const project = getProject(req.params.id);
+    if (!project) return res.status(404).json({ error: "Project not found." });
+    const files = listAllFiles(project.root_path);
+    res.json({ project, files });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "Unable to list project files." });
+  }
+});
+
+app.get("/api/projects/:id/file", (req, res) => {
+  try {
+    const filePath = req.query.path || "";
+    const content = readProjectFile(req.params.id, filePath);
+    res.json({ path: filePath, content });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "Unable to read project file." });
+  }
+});
+
+app.post("/api/projects/:id/file", (req, res) => {
+  try {
+    const filePath = req.body && req.body.path ? req.body.path : "";
+    const content = req.body && Object.prototype.hasOwnProperty.call(req.body, "content") ? req.body.content : "";
+    const result = writeProjectFile(req.params.id, filePath, content);
+    res.json({ ok: true, file: result });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "Unable to save project file." });
+  }
+});
+
+app.post("/api/chat", async (req, res) => {
+  try {
+    const { message, projectId, providerId } = req.body || {};
+    if (!message || !String(message).trim()) {
+      return res.status(400).json({ error: "Message cannot be empty." });
+    }
+
+    const rows = db.prepare("SELECT * FROM ai_provider_connections ORDER BY updated_at DESC").all();
+    const provider = providerId ? rows.find((row) => row.id === providerId) : rows[0];
+    if (!provider) {
+      return res.status(400).json({
+        error: "No provider is configured. Add an OpenAI-compatible provider under Integrations before sending a chat request.",
+        requiresConfig: true
+      });
+    }
+
+    const apiKey = provider.api_key_cipher ? decryptText(provider.api_key_cipher) : "";
+    const config = {
+      id: provider.id,
+      name: provider.name,
+      providerType: provider.provider_type,
+      baseUrl: provider.base_url,
+      apiKey,
+      modelId: provider.model_id || req.body.modelId || "gpt-4o-mini",
+      allowLocal: Boolean(provider.allow_local)
+    };
+
+    const project = projectId ? getProject(projectId) : null;
+    let promptContext = "";
+    if (project) {
+      const fileList = listAllFiles(project.root_path).slice(0, 12).map((item) => item.path).join("\n");
+      promptContext = `Project: ${project.name}\nFiles:\n${fileList || "No files yet."}`;
+    }
+
+    const response = await callProviderChat(config, [
+      { role: "system", content: "You are Clode, a project-aware AI engineering assistant. Answer clearly, cite missing information, and avoid claiming unsupported features. Keep the response concise and practical." },
+      { role: "user", content: `${promptContext}\n\nUser request:\n${message}` }
+    ]);
+
+    res.json({ ok: true, answer: response.content, provider: response.provider, model: response.model, usage: response.usage || null });
+  } catch (error) {
+    console.error("chat-error", error);
+    res.status(500).json({ error: error.message || "Chat request failed." });
+  }
+});
+
+app.get("/api/health/provider", async (_req, res) => {
+  const rows = db.prepare("SELECT * FROM ai_provider_connections ORDER BY updated_at DESC LIMIT 1").all();
+  res.json({ configured: rows.length > 0, provider: rows[0] || null });
+});
+
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) return next();
+  res.sendFile(path.join(__dirname, "..", "public", "index.html"));
+});
+
+app.use((err, _req, res, _next) => {
+  if (err) {
+    const status = err.status || 500;
+    res.status(status).json({ error: err.message || "Unexpected server error." });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Clode AI Workbench running at http://localhost:${PORT}`);
+});
