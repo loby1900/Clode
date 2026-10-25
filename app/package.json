@@ -1,0 +1,15 @@
+{
+  "name": "xfonx-android",
+  "version": "1.0.0",
+  "description": "XFONX Android app wrapper (Capacitor)",
+  "private": true,
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3"
+  }
+}

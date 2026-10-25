@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>XFONX</title>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div id="topbar-slot"></div>
+  <div class="app-shell">
+    <div id="feedList"></div>
+    <div class="loading-state" id="loadingState">جاري التحميل...</div>
+    <div class="empty-state" id="emptyState" style="display:none">
+      لسه مفيش منشورات هنا.<br>اعمل أول بوست بتاعك!
+    </div>
+  </div>
+  <div id="tabbar-slot"></div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/nav.js"></script>
+  <script>
+    mountShell("feed", "XFONX");
+    window.onPostCreated = () => { state.posts = []; state.nextBefore = null; loadMore(true); };
+
+    const state = { posts: [], nextBefore: null, loading: false, done: false };
+    const feedList = document.getElementById("feedList");
+    const loadingState = document.getElementById("loadingState");
+    const emptyState = document.getElementById("emptyState");
+
+    function heartIcon(filled) {
+      return filled
+        ? `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.6-10-9.1C.5 8.6 2.4 5 6 5c2 0 3.3 1 4 2.1C10.7 6 12 5 14 5c3.6 0 5.5 3.6 4 6.9C19.5 16.4 12 21 12 21z"/></svg>`
+        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.6-10-9.1C.5 8.6 2.4 5 6 5c2 0 3.3 1 4 2.1C10.7 6 12 5 14 5c3.6 0 5.5 3.6 4 6.9C19.5 16.4 12 21 12 21z"/></svg>`;
+    }
+    const commentIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.4 8.4 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>`;
+
+    function avatarHtml(user) {
+      return user.avatar_url
+        ? `<img class="avatar" src="${user.avatar_url}" alt="">`
+        : `<div class="avatar"></div>`;
+    }
+
+    function postCardHtml(p) {
+      return `
+      <div class="post-card" data-post-id="${p.id}">
+        <div class="post-head">
+          <a href="/profile.html?user=${encodeURIComponent(p.author.username)}" style="display:flex;align-items:center;gap:10px">
+            ${avatarHtml(p.author)}
+            <span class="uname">${escapeHtml(p.author.username)}</span>
+          </a>
+        </div>
+        <div class="post-img-wrap"><img src="${p.image_url}" alt="" loading="lazy"></div>
+        <div class="post-actions">
+          <button class="like-btn ${p.liked_by_viewer ? "liked" : ""}">${heartIcon(p.liked_by_viewer)}</button>
+          <button class="comment-toggle-btn">${commentIcon}</button>
+        </div>
+        <div class="post-meta">
+          <div class="likes">${p.like_count} إعجاب</div>
+          ${p.caption ? `<div class="caption"><span class="uname">${escapeHtml(p.author.username)}</span>${escapeHtml(p.caption)}</div>` : ""}
+          <div class="comment-count" data-action="toggle-comments">عرض كل التعليقات (${p.comment_count})</div>
+          <div class="time">${timeAgo(p.created_at)}</div>
+        </div>
+        <div class="comments-list" style="display:none"></div>
+        <div class="comment-box">
+          <input type="text" placeholder="علّق..." class="comment-input" />
+          <button class="comment-send-btn">نشر</button>
+        </div>
+      </div>`;
+    }
+
+    async function loadMore(reset) {
+      if (state.loading || (state.done && !reset)) return;
+      state.loading = true;
+      loadingState.style.display = "block";
+      try {
+        const data = await API.feed({ before: reset ? undefined : state.nextBefore });
+        if (reset) feedList.innerHTML = "";
+        state.nextBefore = data.next_before;
+        state.done = !data.next_before;
+        if (data.posts.length === 0 && reset) {
+          emptyState.style.display = "block";
+        } else {
+          emptyState.style.display = "none";
+          feedList.insertAdjacentHTML("beforeend", data.posts.map(postCardHtml).join(""));
+        }
+      } catch (err) {
+        showToast(err.message);
+      } finally {
+        state.loading = false;
+        loadingState.style.display = "none";
+      }
+    }
+
+    feedList.addEventListener("click", async (e) => {
+      const card = e.target.closest(".post-card");
+      if (!card) return;
+      const postId = card.dataset.postId;
+
+      if (e.target.closest(".like-btn")) {
+        const btn = card.querySelector(".like-btn");
+        try {
+          const res = await API.toggleLike(postId);
+          btn.classList.toggle("liked", res.liked);
+          btn.innerHTML = heartIcon(res.liked);
+          card.querySelector(".likes").textContent = `${res.like_count} إعجاب`;
+        } catch (err) {
+          showToast(err.message);
+        }
+        return;
+      }
+
+      if (e.target.closest(".comment-toggle-btn") || e.target.closest("[data-action='toggle-comments']")) {
+        toggleComments(card, postId);
+        return;
+      }
+
+      if (e.target.closest(".comment-send-btn")) {
+        const input = card.querySelector(".comment-input");
+        const body = input.value.trim();
+        if (!body) return;
+        try {
+          await API.addComment(postId, body);
+          input.value = "";
+          const list = card.querySelector(".comments-list");
+          list.style.display = "block";
+          await renderComments(card, postId);
+          const countEl = card.querySelector("[data-action='toggle-comments']");
+          const n = (parseInt(countEl.textContent.match(/\d+/)?.[0] || "0", 10)) + 1;
+          countEl.textContent = `عرض كل التعليقات (${n})`;
+        } catch (err) {
+          showToast(err.message);
+        }
+      }
+    });
+
+    feedList.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && e.target.classList.contains("comment-input")) {
+        e.preventDefault();
+        e.target.closest(".post-card").querySelector(".comment-send-btn").click();
+      }
+    });
+
+    async function renderComments(card, postId) {
+      const list = card.querySelector(".comments-list");
+      try {
+        const data = await API.comments(postId);
+        list.innerHTML = data.comments
+          .map((c) => `<div class="c"><span class="uname">${escapeHtml(c.author.username)}</span>${escapeHtml(c.body)}</div>`)
+          .join("") || `<div class="c" style="color:var(--text-muted)">لسه مفيش تعليقات</div>`;
+      } catch (err) {
+        showToast(err.message);
+      }
+    }
+
+    async function toggleComments(card, postId) {
+      const list = card.querySelector(".comments-list");
+      const isHidden = list.style.display === "none" || !list.style.display;
+      if (isHidden) {
+        list.style.display = "block";
+        await renderComments(card, postId);
+      } else {
+        list.style.display = "none";
+      }
+    }
+
+    let scrollTimer = null;
+    window.addEventListener("scroll", () => {
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 400) {
+          loadMore(false);
+        }
+      }, 120);
+    });
+
+    loadMore(true);
+  </script>
+</body>
+</html>

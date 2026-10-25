@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>XFONX</title>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div id="topbar-slot"></div>
+  <div class="app-shell">
+    <div id="profileRoot"></div>
+  </div>
+  <div id="tabbar-slot"></div>
+
+  <!-- Edit profile modal -->
+  <div class="modal-backdrop" id="editModal">
+    <div class="modal-sheet">
+      <h2>تعديل البروفايل</h2>
+      <div class="file-drop" id="avatarDrop">
+        <div id="avatarDropContent">اضغط لاختيار صورة بروفايل</div>
+        <input type="file" id="avatarInput" accept="image/*" style="display:none" />
+      </div>
+      <div class="field">
+        <label>النبذة التعريفية</label>
+        <textarea id="bioInput" rows="3" placeholder="اكتب حاجة عن نفسك..."></textarea>
+      </div>
+      <button class="btn-primary" id="saveProfileBtn">حفظ</button>
+      <button type="button" class="btn-secondary" id="cancelEditBtn" style="margin-top:8px">إلغاء</button>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/nav.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    let username = params.get("user");
+    const root = document.getElementById("profileRoot");
+
+    async function init() {
+      if (!username) {
+        const me = API.user();
+        if (!me) { window.location.href = "/index.html"; return; }
+        username = me.username;
+      }
+      mountShell(
+        API.user() && API.user().username === username ? "profile" : null,
+        "XFONX"
+      );
+      await loadProfile();
+    }
+
+    function avatarBig(user) {
+      return user.avatar_url
+        ? `<img class="profile-avatar" src="${user.avatar_url}" alt="">`
+        : `<div class="profile-avatar"></div>`;
+    }
+
+    async function loadProfile() {
+      root.innerHTML = `<div class="loading-state">جاري التحميل...</div>`;
+      try {
+        const { user } = await API.profile(username);
+        renderProfile(user);
+        await loadPosts(user);
+      } catch (err) {
+        root.innerHTML = `<div class="empty-state">${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function renderProfile(user) {
+      root.innerHTML = `
+        <div class="profile-head">
+          ${avatarBig(user)}
+          <div class="profile-stats">
+            <div class="stat"><b>${user.post_count}</b><span>منشور</span></div>
+            <div class="stat"><b>${user.follower_count}</b><span>متابِع</span></div>
+            <div class="stat"><b>${user.following_count}</b><span>متابَع</span></div>
+          </div>
+        </div>
+        <div class="profile-bio">
+          <span class="uname">${escapeHtml(user.username)}</span>
+          ${user.bio ? `<div class="bio-text">${escapeHtml(user.bio)}</div>` : ""}
+        </div>
+        <div class="profile-actions">
+          ${
+            user.is_self
+              ? `<button class="btn-secondary" id="editProfileBtn">تعديل البروفايل</button>`
+              : `<button class="btn-primary" id="followBtn">${user.is_followed_by_viewer ? "إلغاء المتابعة" : "متابعة"}</button>`
+          }
+        </div>
+        <div class="post-grid" id="postGrid"></div>
+        <div class="loading-state" id="gridLoading" style="display:none">جاري التحميل...</div>
+      `;
+
+      if (user.is_self) {
+        document.getElementById("editProfileBtn").addEventListener("click", () => openEditModal(user));
+      } else {
+        document.getElementById("followBtn").addEventListener("click", async (e) => {
+          const btn = e.target;
+          btn.disabled = true;
+          try {
+            const res = await API.toggleFollow(username);
+            btn.textContent = res.following ? "إلغاء المتابعة" : "متابعة";
+            btn.className = res.following ? "btn-secondary" : "btn-primary";
+          } catch (err) {
+            showToast(err.message);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      }
+    }
+
+    let gridState = { nextBefore: null, loading: false, done: false };
+
+    async function loadPosts(user) {
+      const grid = document.getElementById("postGrid");
+      const gridLoading = document.getElementById("gridLoading");
+      if (gridState.loading || gridState.done) return;
+      gridState.loading = true;
+      gridLoading.style.display = "block";
+      try {
+        const data = await API.feed({ user: username, before: gridState.nextBefore });
+        gridState.nextBefore = data.next_before;
+        gridState.done = !data.next_before;
+        grid.insertAdjacentHTML(
+          "beforeend",
+          data.posts
+            .map(
+              (p) => `<a class="cell" href="/feed.html"><img src="${p.image_url}" alt="" loading="lazy"></a>`
+            )
+            .join("")
+        );
+      } catch (err) {
+        showToast(err.message);
+      } finally {
+        gridState.loading = false;
+        gridLoading.style.display = "none";
+      }
+    }
+
+    // ---- Edit profile modal ----
+    const editModal = document.getElementById("editModal");
+    const avatarDrop = document.getElementById("avatarDrop");
+    const avatarInput = document.getElementById("avatarInput");
+    const avatarDropContent = document.getElementById("avatarDropContent");
+    const bioInput = document.getElementById("bioInput");
+    let selectedAvatarFile = null;
+
+    function openEditModal(user) {
+      bioInput.value = user.bio || "";
+      avatarDropContent.innerHTML = user.avatar_url
+        ? `<img src="${user.avatar_url}" alt="">`
+        : "اضغط لاختيار صورة بروفايل";
+      selectedAvatarFile = null;
+      editModal.classList.add("show");
+    }
+    document.getElementById("cancelEditBtn").addEventListener("click", () => {
+      editModal.classList.remove("show");
+    });
+    editModal.addEventListener("click", (e) => {
+      if (e.target === editModal) editModal.classList.remove("show");
+    });
+    avatarDrop.addEventListener("click", () => avatarInput.click());
+    avatarInput.addEventListener("change", () => {
+      const f = avatarInput.files[0];
+      if (!f) return;
+      selectedAvatarFile = f;
+      const reader = new FileReader();
+      reader.onload = (e) => { avatarDropContent.innerHTML = `<img src="${e.target.result}" alt="">`; };
+      reader.readAsDataURL(f);
+    });
+    document.getElementById("saveProfileBtn").addEventListener("click", async (e) => {
+      const btn = e.target;
+      btn.disabled = true;
+      try {
+        const { user } = await API.updateProfile({ bio: bioInput.value, avatarFile: selectedAvatarFile });
+        const me = API.user();
+        if (me) {
+          me.bio = user.bio;
+          me.avatar_url = user.avatar_url;
+          API.setUser(me);
+        }
+        editModal.classList.remove("show");
+        showToast("تم الحفظ");
+        gridState = { nextBefore: null, loading: false, done: false };
+        await loadProfile();
+      } catch (err) {
+        showToast(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>

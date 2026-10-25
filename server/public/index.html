@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>XFONX</title>
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-logo">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M5 5L19 19M19 5L5 19" stroke="white" stroke-width="3.2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h1>XFONX</h1>
+      <p>شارك لحظاتك مع اللي يهموك</p>
+    </div>
+
+    <div class="card">
+      <div class="error-msg" id="errorBox"></div>
+
+      <form id="loginForm">
+        <div class="field">
+          <label>اسم المستخدم أو البريد الإلكتروني</label>
+          <input type="text" id="loginId" autocomplete="username" required />
+        </div>
+        <div class="field">
+          <label>كلمة المرور</label>
+          <input type="password" id="loginPw" autocomplete="current-password" required />
+        </div>
+        <button type="submit" class="btn-primary" id="loginBtn">تسجيل الدخول</button>
+      </form>
+
+      <form id="registerForm" style="display:none">
+        <div class="field">
+          <label>اسم المستخدم</label>
+          <input type="text" id="regUsername" placeholder="حروف وأرقام، 3-20 حرف" required />
+        </div>
+        <div class="field">
+          <label>البريد الإلكتروني</label>
+          <input type="email" id="regEmail" required />
+        </div>
+        <div class="field">
+          <label>كلمة المرور</label>
+          <input type="password" id="regPw" placeholder="6 أحرف على الأقل" required />
+        </div>
+        <button type="submit" class="btn-primary" id="regBtn">إنشاء حساب</button>
+      </form>
+
+      <div class="switch-mode">
+        <span id="switchText">معندكش حساب؟</span>
+        <button type="button" id="switchBtn">اعمل حساب جديد</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    if (API.token()) window.location.href = "/feed.html";
+
+    const loginForm = document.getElementById("loginForm");
+    const registerForm = document.getElementById("registerForm");
+    const switchBtn = document.getElementById("switchBtn");
+    const switchText = document.getElementById("switchText");
+    const errorBox = document.getElementById("errorBox");
+    let mode = "login";
+
+    function showError(msg) {
+      errorBox.textContent = msg;
+      errorBox.classList.add("show");
+    }
+    function clearError() {
+      errorBox.classList.remove("show");
+    }
+
+    switchBtn.addEventListener("click", () => {
+      clearError();
+      mode = mode === "login" ? "register" : "login";
+      loginForm.style.display = mode === "login" ? "block" : "none";
+      registerForm.style.display = mode === "register" ? "block" : "none";
+      switchText.textContent = mode === "login" ? "معندكش حساب؟" : "عندك حساب بالفعل؟";
+      switchBtn.textContent = mode === "login" ? "اعمل حساب جديد" : "سجّل دخولك";
+    });
+
+    loginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearError();
+      const btn = document.getElementById("loginBtn");
+      btn.disabled = true;
+      try {
+        const identifier = document.getElementById("loginId").value.trim();
+        const password = document.getElementById("loginPw").value;
+        const data = await API.login(identifier, password);
+        API.setToken(data.token);
+        API.setUser(data.user);
+        window.location.href = "/feed.html";
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    registerForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearError();
+      const btn = document.getElementById("regBtn");
+      btn.disabled = true;
+      try {
+        const username = document.getElementById("regUsername").value.trim();
+        const email = document.getElementById("regEmail").value.trim();
+        const password = document.getElementById("regPw").value;
+        const data = await API.register(username, email, password);
+        API.setToken(data.token);
+        API.setUser(data.user);
+        window.location.href = "/feed.html";
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
