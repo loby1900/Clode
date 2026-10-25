@@ -1,0 +1,21 @@
+{
+  "name": "clode",
+  "version": "1.0.0",
+  "description": "Clode — lightweight local code workspace",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "code",
+    "workspace",
+    "editor",
+    "project"
+  ],
+  "author": "loby1900",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

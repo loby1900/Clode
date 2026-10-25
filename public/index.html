@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clode</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-row">
+          <div class="logo">C</div>
+          <div>
+            <h1>Clode</h1>
+            <small>Workspace</small>
+          </div>
+        </div>
+
+        <button id="new-file-btn" class="primary-btn">+ New file</button>
+
+        <ul id="file-list" class="file-list"></ul>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Project</p>
+            <h2 id="current-file-name">index.html</h2>
+          </div>
+
+          <div class="actions">
+            <button id="save-btn" class="secondary-btn">Save</button>
+            <button id="preview-btn" class="primary-btn">Run preview</button>
+          </div>
+        </header>
+
+        <section class="editor-panel">
+          <label class="input-label" for="language-select">Language</label>
+          <select id="language-select">
+            <option value="html">HTML</option>
+            <option value="css">CSS</option>
+            <option value="javascript">JavaScript</option>
+            <option value="markdown">Markdown</option>
+            <option value="json">JSON</option>
+            <option value="text">Text</option>
+          </select>
+
+          <textarea id="code-editor" spellcheck="false" aria-label="Code editor"></textarea>
+        </section>
+      </main>
+
+      <aside class="preview-pane">
+        <div class="preview-header">
+          <h3>Preview</h3>
+        </div>
+        <iframe id="preview-frame" title="Live preview"></iframe>
+      </aside>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

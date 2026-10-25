@@ -1,0 +1,31 @@
+const fs = require('fs');
+const path = require('path');
+
+const dataPath = path.join(__dirname, '..', 'data', 'snippets.json');
+
+if (!fs.existsSync(path.dirname(dataPath))) {
+  fs.mkdirSync(path.dirname(dataPath), { recursive: true });
+}
+
+if (!fs.existsSync(dataPath)) {
+  fs.writeFileSync(dataPath, JSON.stringify([
+    {
+      id: 'welcome-html',
+      name: 'index.html',
+      language: 'html',
+      content: '<!DOCTYPE html>\n<html lang="en">\n  <body>\n    <h1>Welcome to Clode</h1>\n  </body>\n</html>'
+    },
+    {
+      id: 'welcome-css',
+      name: 'styles.css',
+      language: 'css',
+      content: 'body { font-family: sans-serif; background: #0f172a; color: white; }'
+    },
+    {
+      id: 'welcome-js',
+      name: 'app.js',
+      language: 'javascript',
+      content: 'console.log("Clode is ready!");'
+    }
+  ], null, 2), 'utf8');
+}
