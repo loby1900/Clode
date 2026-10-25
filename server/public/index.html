@@ -9,13 +9,14 @@ const { uploadsDir } = require("./middleware/upload");
 const authRoutes = require("./routes/auth");
 const postRoutes = require("./routes/posts");
 const userRoutes = require("./routes/users");
-const { encryptText, decryptText } = require("./crypto");
+const { encryptText, decryptText } = require("./providerService");
 const {
   PROVIDER_CATALOG,
   normalizeProviderType,
   isAllowedProviderUrl,
   testProviderConnection,
-  callProviderChat
+  callProviderChat,
+  getDefaultModelForProvider
 } = require("./providerService");
 const {
   createProject,
@@ -31,7 +32,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
 app.use(cors());
-app.use(express.json({ limit: "5mb" }));
+app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "..", "public")));
 app.use("/uploads", express.static(uploadsDir));
@@ -41,7 +42,7 @@ app.use("/api/posts", postRoutes);
 app.use("/api/users", userRoutes);
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, app: "Clode AI Workbench", version: "1.0.0" });
+  res.json({ ok: true, app: "Clode AI Workbench", version: "1.0.0", aiMode: "last-execution-layer" });
 });
 
 app.get("/api/providers/catalog", (_req, res) => {
@@ -50,13 +51,8 @@ app.get("/api/providers/catalog", (_req, res) => {
 
 app.get("/api/providers", (_req, res) => {
   const rows = db.prepare("SELECT * FROM ai_provider_connections ORDER BY updated_at DESC").all();
-  const sanitizedRows = rows.map((row) => ({
-    ...row,
-    api_key: undefined,
-    api_key_cipher: undefined,
-    apiKey: null
-  }));
-  res.json({ providers: sanitizedRows });
+  const sanitized = rows.map((row) => ({ ...row, api_key: undefined, api_key_cipher: undefined, apiKey: null }));
+  res.json({ providers: sanitized });
 });
 
 app.post("/api/providers", async (req, res) => {
@@ -65,7 +61,7 @@ app.post("/api/providers", async (req, res) => {
     const providerType = normalizeProviderType(payload.providerType || payload.provider_type || "openai-compatible");
     const name = String(payload.name || payload.connectionLabel || "Custom provider").trim();
     const baseUrl = String(payload.baseUrl || payload.base_url || "").trim();
-    const modelId = payload.modelId ? String(payload.modelId).trim() : payload.model_id ? String(payload.model_id).trim() : "";
+    const modelId = String(payload.modelId || payload.model_id || getDefaultModelForProvider(providerType)).trim();
     const apiKey = payload.apiKey ? String(payload.apiKey).trim() : payload.api_key ? String(payload.api_key).trim() : "";
     const allowLocal = Boolean(payload.allowLocal || payload.allow_local);
 
@@ -78,7 +74,7 @@ app.post("/api/providers", async (req, res) => {
     }
 
     const id = String(payload.id || randomUUID());
-    const safeApiKey = apiKey ? encryptText(apiKey) : null;
+    const cipher = apiKey ? encryptText(apiKey) : null;
 
     db.prepare(`
       INSERT INTO ai_provider_connections (id, name, provider_type, base_url, api_key_cipher, model_id, connection_label, allow_local, updated_at)
@@ -92,7 +88,7 @@ app.post("/api/providers", async (req, res) => {
         connection_label = excluded.connection_label,
         allow_local = excluded.allow_local,
         updated_at = CURRENT_TIMESTAMP
-    `).run(id, name, providerType, baseUrl, safeApiKey, modelId || null, name, allowLocal ? 1 : 0);
+    `).run(id, name, providerType, baseUrl, cipher, modelId || null, name, allowLocal ? 1 : 0);
 
     res.status(201).json({ ok: true, provider: { id, name, providerType, baseUrl, modelId, allowLocal } });
   } catch (error) {
@@ -102,8 +98,7 @@ app.post("/api/providers", async (req, res) => {
 
 app.post("/api/providers/test", async (req, res) => {
   try {
-    const config = req.body || {};
-    const result = await testProviderConnection(config);
+    const result = await testProviderConnection(req.body || {});
     res.status(result.status === "error" ? 400 : 200).json(result);
   } catch (error) {
     res.status(500).json({ status: "error", code: "TEST_FAILED", message: error.message || "Connection test failed." });
@@ -134,8 +129,7 @@ app.post("/api/projects", (req, res) => {
 
 app.delete("/api/projects/:id", (req, res) => {
   try {
-    const result = deleteProject(req.params.id);
-    res.json(result);
+    res.json(deleteProject(req.params.id));
   } catch (error) {
     res.status(400).json({ error: error.message || "Unable to delete project." });
   }
@@ -153,9 +147,7 @@ app.get("/api/projects/:id/files", (req, res) => {
 
 app.get("/api/projects/:id/file", (req, res) => {
   try {
-    const filePath = req.query.path || "";
-    const content = readProjectFile(req.params.id, filePath);
-    res.json({ path: filePath, content });
+    res.json({ path: req.query.path || "", content: readProjectFile(req.params.id, req.query.path || "") });
   } catch (error) {
     res.status(400).json({ error: error.message || "Unable to read project file." });
   }
@@ -165,16 +157,46 @@ app.post("/api/projects/:id/file", (req, res) => {
   try {
     const filePath = req.body && req.body.path ? req.body.path : "";
     const content = req.body && Object.prototype.hasOwnProperty.call(req.body, "content") ? req.body.content : "";
-    const result = writeProjectFile(req.params.id, filePath, content);
-    res.json({ ok: true, file: result });
+    res.json({ ok: true, file: writeProjectFile(req.params.id, filePath, content) });
   } catch (error) {
     res.status(400).json({ error: error.message || "Unable to save project file." });
   }
 });
 
+app.post("/api/agent/plan", async (req, res) => {
+  try {
+    const { task, projectId } = req.body || {};
+    if (!task || !String(task).trim()) {
+      return res.status(400).json({ error: "Task text is required." });
+    }
+
+    let project = null;
+    if (projectId) project = getProject(projectId);
+    let affectedFiles = project ? listAllFiles(project.root_path).slice(0, 12).map((entry) => entry.path) : [];
+
+    const plan = {
+      objective: String(task).trim(),
+      projectName: project ? project.name : "No project selected",
+      affectedFiles,
+      phases: [
+        "Inspect project context and affected files",
+        "Propose minimal patch or code change",
+        "Request user approval before destructive operations",
+        "Run permitted checks only when supported by project tooling"
+      ],
+      autonomy: "controlled",
+      policy: "The AI may act on project files only within the active workspace and user-defined permissions."
+    };
+
+    res.json({ plan });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Unable to create plan." });
+  }
+});
+
 app.post("/api/chat", async (req, res) => {
   try {
-    const { message, projectId, providerId, providerType, modelId } = req.body || {};
+    const { message, projectId, providerId, modelId } = req.body || {};
     if (!message || !String(message).trim()) {
       return res.status(400).json({ error: "Message cannot be empty." });
     }
@@ -192,23 +214,23 @@ app.post("/api/chat", async (req, res) => {
     const config = {
       id: provider.id,
       name: provider.name,
-      providerType: normalizeProviderType(provider.provider_type || providerType || "openai-compatible"),
+      providerType: normalizeProviderType(provider.provider_type || "openai-compatible"),
       baseUrl: provider.base_url,
       apiKey,
-      modelId: provider.model_id || modelId || "gpt-4o-mini",
+      modelId: provider.model_id || modelId || getDefaultModelForProvider(provider.provider_type || "openai-compatible"),
       allowLocal: Boolean(provider.allow_local)
     };
 
     const project = projectId ? getProject(projectId) : null;
-    let promptContext = "";
+    let context = "";
     if (project) {
-      const fileList = listAllFiles(project.root_path).slice(0, 15).map((item) => item.path).join("\n");
-      promptContext = `Project: ${project.name}\nFiles:\n${fileList || "No files yet."}`;
+      const fileList = listAllFiles(project.root_path).slice(0, 15).map((entry) => entry.path).join("\n");
+      context = `Project: ${project.name}\nFiles:\n${fileList || "No files yet."}\n\n`;
     }
 
     const response = await callProviderChat(config, [
-      { role: "system", content: "You are Clode, a secure project-aware AI engineering assistant. Be clear, honest, and explicit about required configuration or missing capabilities. Never pretend a feature exists without real provider support." },
-      { role: "user", content: `${promptContext}\n\nUser request:\n${message}` }
+      { role: "system", content: "You are Clode, a free-form but safe AI engineering assistant. You may work in the project context and propose edits, but do not claim unsupported features or destructive actions without explicit user approval." },
+      { role: "user", content: `${context}User request:\n${message}` }
     ]);
 
     res.json({ ok: true, answer: response.content, provider: response.provider, model: response.model, usage: response.usage || null });
@@ -217,7 +239,7 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-app.get("/api/health/provider", async (_req, res) => {
+app.get("/api/health/provider", (_req, res) => {
   const rows = db.prepare("SELECT * FROM ai_provider_connections ORDER BY updated_at DESC LIMIT 1").all();
   res.json({ configured: rows.length > 0, provider: rows[0] || null });
 });
@@ -238,3 +260,4 @@ app.listen(PORT, () => {
   console.log(`Clode AI Workbench running at http://localhost:${PORT}`);
 });
 
+{

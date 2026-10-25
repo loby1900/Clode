@@ -20,6 +20,7 @@
         <nav class="nav">
           <button class="nav-item active" data-view="workspace">Home</button>
           <button class="nav-item" data-view="chat">Chat</button>
+          <button class="nav-item" data-view="logic">Logic</button>
           <button class="nav-item" data-view="projects">Projects</button>
           <button class="nav-item" data-view="files">Files</button>
           <button class="nav-item" data-view="integrations">Integrations</button>
@@ -50,12 +51,24 @@
               </div>
               <div id="chat-messages" class="chat-messages"></div>
               <form id="chat-form" class="composer">
-                <textarea id="chat-input" rows="3" placeholder="Describe the task, project, app, or feature you want to build..."></textarea>
+                <textarea id="chat-input" rows="3" placeholder="Describe the project, app, game, website, image or coding task..."></textarea>
                 <div class="composer-actions">
                   <button type="submit" class="primary-button">Send</button>
                   <button type="button" id="clear-chat" class="ghost-button">Clear</button>
                 </div>
               </form>
+            </div>
+
+            <div class="panel hidden" id="panel-logic">
+              <div class="panel-header">
+                <h3>AI autonomy</h3>
+              </div>
+              <div class="logic-box">
+                <label class="checkbox-row"><input id="agent-mode" type="checkbox" /> Enable controlled agent mode</label>
+                <label class="checkbox-row"><input id="allow-destructive" type="checkbox" /> Allow destructive actions after explicit approval</label>
+                <button id="plan-task" type="button" class="primary-button">Create task plan</button>
+                <div id="agent-plan" class="plan-output"></div>
+              </div>
             </div>
 
             <div class="panel hidden" id="panel-projects">
@@ -108,12 +121,9 @@
                   </select>
                 </div>
                 <input id="provider-base-url" type="url" placeholder="https://api.openai.com/v1 or http://localhost:11434" />
-                <input id="provider-model" type="text" placeholder="Model ID, e.g. gpt-4o-mini or llama3.1" />
+                <input id="provider-model" type="text" placeholder="Model ID, e.g. gpt-4o-mini, claude-3-5-sonnet, llama3.1" />
                 <input id="provider-api-key" type="password" placeholder="API key (if required)" />
-                <label class="checkbox-row">
-                  <input id="provider-allow-local" type="checkbox" />
-                  Allow local trusted endpoints
-                </label>
+                <label class="checkbox-row"><input id="provider-allow-local" type="checkbox" /> Allow local trusted endpoints</label>
                 <div class="stack-buttons">
                   <button type="submit" class="primary-button">Save connection</button>
                   <button type="button" id="test-provider" class="ghost-button">Test connection</button>
@@ -128,9 +138,9 @@
               </div>
               <ul class="feature-list">
                 <li>Credentials are stored encrypted on the server side and never exposed to the browser bundle.</li>
-                <li>The app accepts only trusted provider URLs; private-network endpoints are blocked unless explicit local trust is enabled.</li>
-                <li>Project files remain in a local workspace under the server data directory.</li>
-                <li>Live AI execution requires a valid provider key and a supported model for that provider.</li>
+                <li>Private-network endpoints are blocked unless explicitly allowed for a local trusted setup.</li>
+                <li>AI actions are last-stage execution and remain controlled by explicit permissions and review.</li>
+                <li>Destructive tasks require direct approval before they execute.</li>
               </ul>
             </div>
           </div>
@@ -141,23 +151,23 @@
                 <h3>Task plan</h3>
               </div>
               <ol class="task-plan">
-                <li>Configure a real provider.</li>
-                <li>Create or open a project.</li>
-                <li>Review files and patch safely.</li>
-                <li>Run permitted checks and iterate.</li>
+                <li>Connect a real AI provider.</li>
+                <li>Open or create a project.</li>
+                <li>Plan the work and limit permissions.</li>
+                <li>Run only approved checks and file edits.</li>
               </ol>
             </div>
 
             <div class="panel">
               <div class="panel-header">
-                <h3>Capabilities</h3>
+                <h3>Provider families</h3>
               </div>
               <ul class="feature-list compact">
-                <li>OpenAI-compatible gateways</li>
-                <li>Anthropic / Gemini / Groq / DeepSeek / xAI</li>
-                <li>Local Ollama support</li>
-                <li>Project-aware file workspace</li>
-                <li>Live chat with explicit configuration</li>
+                <li>OpenAI compatible and OpenAI</li>
+                <li>Anthropic, Gemini, Groq, DeepSeek</li>
+                <li>Mistral, xAI, Azure OpenAI</li>
+                <li>Ollama local mode</li>
+                <li>Custom trusted endpoints</li>
               </ul>
             </div>
           </aside>
@@ -169,3 +179,4 @@
   </body>
 </html>
 
+{
