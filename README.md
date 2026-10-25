@@ -1,96 +1,74 @@
 # Clode AI Workbench
 
-A secure, project-aware AI development workspace built for real provider integrations, project inspection, and controlled local workspaces.
+A secure, project-aware AI workbench for modern software workflows. This project is designed to support a broad set of AI providers without pretending that all providers are universally compatible.
 
-## What this app includes
+## Supported provider families
 
-- Provider configuration for OpenAI-compatible endpoints and custom API URLs
-- Encrypted credential storage on the server side
-- Project creation and file tree browsing in a local workspace
-- Chat interface that sends requests to the configured provider
-- Truthful validation and safe error handling for failed or blocked connections
-- Secure URL checks to reduce SSRF and private network misuse
-- Responsive dark/light interface with project and file panels
+The backend supports these provider families through a provider adapter layer:
+
+- OpenAI-compatible APIs
+- OpenAI
+- Anthropic
+- Google Gemini
+- DeepSeek
+- Groq
+- Mistral
+- xAI
+- Azure OpenAI
+- Ollama (local trusted endpoints)
+- Custom endpoints
+
+The app is intentionally honest about capability differences. Each provider has different authentication, request formats, model access, and feature support. The app reports a truthful success, auth failure, or inconclusive result instead of faking a successful connection.
+
+## What is implemented
+
+- Secure server-side provider configuration
+- Encrypted storage of API keys
+- Provider testing and validation against real endpoints
+- Project workspaces with local file reads/writes
+- Project-aware chat for code and engineering tasks
+- Support for local and public provider URLs with explicit safety rules
+- Modern dark/light interface for chat, projects, files, and integrations
 
 ## Important truthfulness note
 
-This product is production-minded but not a fake demo. It does not secretly claim a provider is connected or working unless the user actually configured credentials and the backend receives a valid response. A live AI chat request requires a working provider endpoint, model access, and valid credentials from the user environment.
+This app does not claim that a provider works unless the user configures a valid key, a supported base URL, and a compatible model. Some provider features such as vision, tools, audio, or file operations require specific model support and provider access.
 
 ## Quick start
-
-1. Install dependencies
 
 ```bash
 cd server
 npm install
 cp .env.example .env
-```
-
-2. Update values in `.env` for your environment
-
-```dotenv
-PORT=3000
-JWT_SECRET=change-this-to-a-long-random-string
-SECRET_KEY=change-this-to-a-long-random-string
-OPENAI_COMPATIBLE_BASE_URL=https://api.openai.com/v1
-```
-
-3. Start the app
-
-```bash
 npm start
 ```
 
 Open `http://localhost:3000`.
 
-## Core flows
+## Provider configuration
 
-### 1. Connect a provider
+Use the Integrations panel to enter:
+- provider name
+- provider type
+- base URL
+- model ID
+- API key
+- optional local trusted endpoint flag
 
-- Open the Integrations panel.
-- Enter the provider name, base URL, model, and API key.
-- Use the Test connection action to validate the endpoint.
-- The app will return a truthful success, authentication error, or inconclusive result.
+## Security rules
 
-### 2. Create a project
+- API keys are encrypted on the server before storage.
+- Private HTTP endpoints are blocked unless explicitly allowed for local use.
+- The app does not expose secrets in browser code or logs.
+- Model execution only runs when a valid provider config is present.
 
-- Use the Projects panel to create a workspace.
-- Files are stored under `server/data/projects/<project-id>/`.
-- You can open files, edit them, and save them back to disk.
+## Recommended next steps
 
-### 3. Chat with the configured model
+- Add provider-specific model discovery endpoints
+- Add project import from Git repositories
+- Add structured task approvals and patch review
+- Add build/test execution in a sandboxed worker
+- Add image generation and multimodal workflows behind explicit capability checks
 
-- The assistant sends project context and the user prompt to the configured provider.
-- It uses the first connected provider if none is explicitly selected.
-- If no provider is configured, the app returns a clear configuration message instead of a fake success.
+The core architecture keeps the AI layer at the final execution boundary: the app configures providers, inspects projects, and then calls the selected model only when the settings and permissions are valid.
 
-## Security model
-
-- API keys are stored encrypted with a server-side secret.
-- URL validation blocks unsafe schemes and private-network SSRF targets unless explicitly allowed as local.
-- Uploaded project content and provider configuration are kept server-side rather than embedded in the browser bundle.
-- The app is designed for local-first operation and human approval for destructive actions.
-
-## Testing
-
-Run the backend checks:
-
-```bash
-cd server
-npm test
-```
-
-## Limitations
-
-- Real AI execution depends on user-owned credentials and provider access.
-- Some models or endpoints may require different request formats or additional headers.
-- This repository does not provide a cloud deployment or external AI account by default.
-- Image generation, browser automation, and game workflows are intentionally surfaced as configuration-dependent features rather than pretending they are universal.
-
-## Recommended next improvements
-
-- Add real project import and Git integration.
-- Add prompt templates and task execution history.
-- Add a sandboxed worker for build, lint, and test commands.
-- Add provider-specific adapters for Anthropic, Azure OpenAI, Gemini, and local model servers.
-- Add project indexing and RAG features with explicit user approval.

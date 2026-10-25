@@ -1,393 +1,171 @@
-* { box-sizing: border-box; }
-:root {
-  --bg: #0b1020;
-  --panel: #111827;
-  --panel-alt: #171f2f;
-  --panel-soft: #1b2438;
-  --text: #e5edf8;
-  --muted: #99a6c7;
-  --line: rgba(148, 163, 184, 0.18);
-  --accent: #7c9cff;
-  --accent-strong: #8b5cf6;
-  --success: #2dc770;
-  --warning: #fbbf24;
-  --danger: #ff6b6b;
-  --shadow: 0 20px 45px rgba(15, 23, 42, 0.35);
-}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clode AI Workbench</title>
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <div class="brand-mark">C</div>
+          <div>
+            <h1>Clode</h1>
+            <p>AI workbench</p>
+          </div>
+        </div>
 
-body.light {
-  --bg: #eef3ff;
-  --panel: #ffffff;
-  --panel-alt: #f4f7ff;
-  --panel-soft: #eaf0ff;
-  --text: #1b2333;
-  --muted: #4a5d84;
-  --line: rgba(127, 146, 177, 0.24);
-  --accent: #3d68ff;
-  --accent-strong: #7c3aed;
-  --success: #0f9f72;
-  --warning: #b7791f;
-  --danger: #d92d20;
-  --shadow: 0 18px 40px rgba(79, 96, 138, 0.14);
-}
+        <nav class="nav">
+          <button class="nav-item active" data-view="workspace">Home</button>
+          <button class="nav-item" data-view="chat">Chat</button>
+          <button class="nav-item" data-view="projects">Projects</button>
+          <button class="nav-item" data-view="files">Files</button>
+          <button class="nav-item" data-view="integrations">Integrations</button>
+          <button class="nav-item" data-view="settings">Settings</button>
+        </nav>
 
-html, body {
-  margin: 0;
-  min-height: 100%;
-  background: var(--bg);
-  color: var(--text);
-  font-family: Inter, "Segoe UI", sans-serif;
-}
+        <div class="status-card">
+          <span class="status-label">Provider state</span>
+          <strong id="provider-status" class="status-bad">Unconfigured</strong>
+        </div>
+      </aside>
 
-body {
-  transition: background 0.2s ease, color 0.2s ease;
-}
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Project-aware AI assistant</p>
+            <h2>Universal development workspace</h2>
+          </div>
+          <button id="theme-toggle" class="ghost-button" type="button">Toggle theme</button>
+        </header>
 
-button, input, select, textarea {
-  font: inherit;
-}
+        <section class="content-grid">
+          <div class="main-panel">
+            <div class="panel" id="panel-chat">
+              <div class="panel-header">
+                <h3>Conversation</h3>
+                <small id="provider-badge">No provider connected</small>
+              </div>
+              <div id="chat-messages" class="chat-messages"></div>
+              <form id="chat-form" class="composer">
+                <textarea id="chat-input" rows="3" placeholder="Describe the task, project, app, or feature you want to build..."></textarea>
+                <div class="composer-actions">
+                  <button type="submit" class="primary-button">Send</button>
+                  <button type="button" id="clear-chat" class="ghost-button">Clear</button>
+                </div>
+              </form>
+            </div>
 
-button {
-  cursor: pointer;
-}
+            <div class="panel hidden" id="panel-projects">
+              <div class="panel-header">
+                <h3>Projects</h3>
+              </div>
+              <form id="project-form" class="inline-form">
+                <input id="project-name" type="text" placeholder="Project name" />
+                <input id="project-description" type="text" placeholder="Description (optional)" />
+                <button type="submit" class="primary-button">Create project</button>
+              </form>
+              <div id="project-list" class="card-list"></div>
+            </div>
 
-.app-shell {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  min-height: 100vh;
-}
+            <div class="panel hidden" id="panel-files">
+              <div class="panel-header">
+                <h3>Files</h3>
+              </div>
+              <div class="project-tools">
+                <select id="project-selector"></select>
+                <input id="file-path" type="text" placeholder="path/to/file.txt" />
+                <button id="open-file" class="ghost-button" type="button">Open</button>
+              </div>
+              <div id="file-tree" class="file-tree"></div>
+              <textarea id="file-editor" rows="18" placeholder="Select a project file to inspect or edit..."></textarea>
+              <div class="editor-actions">
+                <button id="save-file" class="primary-button" type="button">Save file</button>
+              </div>
+            </div>
 
-.sidebar {
-  background: linear-gradient(180deg, rgba(17,24,39,0.9), rgba(11,16,32,0.96));
-  border-right: 1px solid var(--line);
-  padding: 24px 18px;
-}
+            <div class="panel hidden" id="panel-integrations">
+              <div class="panel-header">
+                <h3>Integrations</h3>
+              </div>
+              <form id="provider-form" class="provider-form">
+                <div class="field-grid">
+                  <input id="provider-name" type="text" placeholder="Connection label" />
+                  <select id="provider-type">
+                    <option value="openai-compatible">OpenAI-compatible</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="anthropic">Anthropic</option>
+                    <option value="gemini">Google Gemini</option>
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="groq">Groq</option>
+                    <option value="mistral">Mistral</option>
+                    <option value="xai">xAI</option>
+                    <option value="azure-openai">Azure OpenAI</option>
+                    <option value="ollama">Ollama</option>
+                    <option value="custom">Custom endpoint</option>
+                  </select>
+                </div>
+                <input id="provider-base-url" type="url" placeholder="https://api.openai.com/v1 or http://localhost:11434" />
+                <input id="provider-model" type="text" placeholder="Model ID, e.g. gpt-4o-mini or llama3.1" />
+                <input id="provider-api-key" type="password" placeholder="API key (if required)" />
+                <label class="checkbox-row">
+                  <input id="provider-allow-local" type="checkbox" />
+                  Allow local trusted endpoints
+                </label>
+                <div class="stack-buttons">
+                  <button type="submit" class="primary-button">Save connection</button>
+                  <button type="button" id="test-provider" class="ghost-button">Test connection</button>
+                </div>
+              </form>
+              <div id="provider-list" class="card-list"></div>
+            </div>
 
-.brand-block {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 28px;
-}
+            <div class="panel hidden" id="panel-settings">
+              <div class="panel-header">
+                <h3>Security and platform notes</h3>
+              </div>
+              <ul class="feature-list">
+                <li>Credentials are stored encrypted on the server side and never exposed to the browser bundle.</li>
+                <li>The app accepts only trusted provider URLs; private-network endpoints are blocked unless explicit local trust is enabled.</li>
+                <li>Project files remain in a local workspace under the server data directory.</li>
+                <li>Live AI execution requires a valid provider key and a supported model for that provider.</li>
+              </ul>
+            </div>
+          </div>
 
-.brand-mark {
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: white;
-  font-weight: 800;
-}
+          <aside class="context-panel">
+            <div class="panel">
+              <div class="panel-header">
+                <h3>Task plan</h3>
+              </div>
+              <ol class="task-plan">
+                <li>Configure a real provider.</li>
+                <li>Create or open a project.</li>
+                <li>Review files and patch safely.</li>
+                <li>Run permitted checks and iterate.</li>
+              </ol>
+            </div>
 
-.brand-block h1 {
-  margin: 0;
-  font-size: 1.15rem;
-}
+            <div class="panel">
+              <div class="panel-header">
+                <h3>Capabilities</h3>
+              </div>
+              <ul class="feature-list compact">
+                <li>OpenAI-compatible gateways</li>
+                <li>Anthropic / Gemini / Groq / DeepSeek / xAI</li>
+                <li>Local Ollama support</li>
+                <li>Project-aware file workspace</li>
+                <li>Live chat with explicit configuration</li>
+              </ul>
+            </div>
+          </aside>
+        </section>
+      </main>
+    </div>
 
-.brand-block p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.72rem;
-}
+    <script src="/js/app.js"></script>
+  </body>
+</html>
 
-.nav {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.nav-item {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  color: var(--text);
-  text-align: left;
-  padding: 10px 12px;
-  transition: 0.2s;
-}
-
-.nav-item:hover, .nav-item.active {
-  background: rgba(124, 156, 255, 0.1);
-  border-color: var(--line);
-}
-
-.status-card, .panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
-}
-
-.status-card {
-  margin-top: 24px;
-  padding: 16px;
-}
-
-.status-label {
-  display: block;
-  color: var(--muted);
-  font-size: 0.7rem;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  margin-bottom: 4px;
-}
-
-.status-good {
-  color: var(--success);
-}
-
-.status-bad {
-  color: var(--danger);
-}
-
-.workspace {
-  padding: 30px;
-}
-
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.eyebrow {
-  margin: 0;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: var(--muted);
-  font-size: 0.68rem;
-}
-
-.topbar h2 {
-  margin: 8px 0 0;
-  font-size: clamp(1.6rem, 2vw, 2.2rem);
-}
-
-.content-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(280px, 0.9fr);
-  gap: 22px;
-}
-
-.main-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-}
-
-.panel {
-  padding: 18px;
-}
-
-.hidden {
-  display: none !important;
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.panel-header h3 {
-  margin: 0;
-  font-size: 1.05rem;
-}
-
-.chat-messages {
-  min-height: 280px;
-  max-height: 420px;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 12px;
-  border-radius: 14px;
-  background: var(--panel-alt);
-  border: 1px solid var(--line);
-}
-
-.message {
-  padding: 12px 14px;
-  border-radius: 12px;
-  max-width: 88%;
-  line-height: 1.5;
-  white-space: pre-wrap;
-}
-
-.message.user {
-  background: rgba(124, 156, 255, 0.15);
-  align-self: flex-end;
-}
-
-.message.assistant {
-  background: rgba(15, 159, 114, 0.08);
-  align-self: flex-start;
-}
-
-.composer, .provider-form, .inline-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 16px;
-}
-
-textarea, input, select {
-  width: 100%;
-  background: var(--panel-alt);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 11px 12px;
-}
-
-textarea {
-  resize: vertical;
-  min-height: 80px;
-}
-
-.composer-actions, .stack-buttons, .editor-actions, .project-tools {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.primary-button, .ghost-button {
-  border-radius: 10px;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-}
-
-.primary-button {
-  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  color: white;
-  border: none;
-}
-
-.ghost-button {
-  background: transparent;
-  color: var(--text);
-}
-
-.card-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.list-item {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 12px 14px;
-  background: var(--panel-alt);
-}
-
-.list-item small {
-  display: block;
-  color: var(--muted);
-}
-
-.list-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.list-actions button {
-  background: transparent;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--text);
-  padding: 7px 10px;
-}
-
-.field-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.checkbox-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  color: var(--muted);
-}
-
-.file-tree {
-  margin: 16px 0;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel-alt);
-  padding: 10px;
-}
-
-.file-node {
-  padding: 6px 8px;
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--text);
-}
-
-.file-node:hover {
-  background: rgba(124, 156, 255, 0.12);
-}
-
-#file-editor {
-  margin-top: 14px;
-  min-height: 260px;
-  background: #0f172a;
-}
-
-body.light #file-editor {
-  background: #edf3ff;
-}
-
-.task-plan {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--muted);
-  line-height: 1.8;
-}
-
-.feature-list {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--muted);
-  line-height: 1.8;
-}
-
-.context-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-@media (max-width: 980px) {
-  .app-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .content-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .workspace {
-    padding: 16px;
-  }
-}

@@ -2,6 +2,7 @@ require("dotenv").config();
 const path = require("path");
 const express = require("express");
 const cors = require("cors");
+const { randomUUID } = require("crypto");
 
 const db = require("./db");
 const { uploadsDir } = require("./middleware/upload");
@@ -9,7 +10,13 @@ const authRoutes = require("./routes/auth");
 const postRoutes = require("./routes/posts");
 const userRoutes = require("./routes/users");
 const { encryptText, decryptText } = require("./crypto");
-const { testProviderConnection, callProviderChat } = require("./providerService");
+const {
+  PROVIDER_CATALOG,
+  normalizeProviderType,
+  isAllowedProviderUrl,
+  testProviderConnection,
+  callProviderChat
+} = require("./providerService");
 const {
   createProject,
   deleteProject,
@@ -26,7 +33,6 @@ const PORT = Number(process.env.PORT || 3000);
 app.use(cors());
 app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: true }));
-
 app.use(express.static(path.join(__dirname, "..", "public")));
 app.use("/uploads", express.static(uploadsDir));
 
@@ -36,6 +42,10 @@ app.use("/api/users", userRoutes);
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, app: "Clode AI Workbench", version: "1.0.0" });
+});
+
+app.get("/api/providers/catalog", (_req, res) => {
+  res.json({ providers: PROVIDER_CATALOG });
 });
 
 app.get("/api/providers", (_req, res) => {
@@ -51,17 +61,25 @@ app.get("/api/providers", (_req, res) => {
 
 app.post("/api/providers", async (req, res) => {
   try {
-    const { name, providerType, baseUrl, apiKey, modelId, connectionLabel, allowLocal } = req.body || {};
-    if (!name || !providerType || !baseUrl) {
-      return res.status(400).json({ error: "Name, provider type, and base URL are required." });
-    }
-    const { isAllowedProviderUrl } = require("./providerService");
-    if (!isAllowedProviderUrl(baseUrl, Boolean(allowLocal))) {
-      return res.status(400).json({ error: "Base URL is invalid or blocked. Use a trusted URL and choose local mode only for local endpoints." });
+    const payload = req.body || {};
+    const providerType = normalizeProviderType(payload.providerType || payload.provider_type || "openai-compatible");
+    const name = String(payload.name || payload.connectionLabel || "Custom provider").trim();
+    const baseUrl = String(payload.baseUrl || payload.base_url || "").trim();
+    const modelId = payload.modelId ? String(payload.modelId).trim() : payload.model_id ? String(payload.model_id).trim() : "";
+    const apiKey = payload.apiKey ? String(payload.apiKey).trim() : payload.api_key ? String(payload.api_key).trim() : "";
+    const allowLocal = Boolean(payload.allowLocal || payload.allow_local);
+
+    if (!name || !baseUrl) {
+      return res.status(400).json({ error: "Provider name and base URL are required." });
     }
 
-    const id = String(req.body.id || require("crypto").randomUUID());
+    if (!isAllowedProviderUrl(baseUrl, allowLocal)) {
+      return res.status(400).json({ error: "Base URL is invalid or blocked. Use a trusted URL; allow local endpoints only when needed." });
+    }
+
+    const id = String(payload.id || randomUUID());
     const safeApiKey = apiKey ? encryptText(apiKey) : null;
+
     db.prepare(`
       INSERT INTO ai_provider_connections (id, name, provider_type, base_url, api_key_cipher, model_id, connection_label, allow_local, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -74,11 +92,10 @@ app.post("/api/providers", async (req, res) => {
         connection_label = excluded.connection_label,
         allow_local = excluded.allow_local,
         updated_at = CURRENT_TIMESTAMP
-    `).run(id, String(name).trim(), String(providerType).trim(), String(baseUrl).trim(), safeApiKey, modelId ? String(modelId).trim() : null, connectionLabel ? String(connectionLabel).trim() : null, allowLocal ? 1 : 0);
+    `).run(id, name, providerType, baseUrl, safeApiKey, modelId || null, name, allowLocal ? 1 : 0);
 
-    res.status(201).json({ ok: true, provider: { id, name, providerType, baseUrl, modelId, connectionLabel, allowLocal } });
+    res.status(201).json({ ok: true, provider: { id, name, providerType, baseUrl, modelId, allowLocal } });
   } catch (error) {
-    console.error("provider-create-error", error);
     res.status(500).json({ error: error.message || "Unable to save provider settings." });
   }
 });
@@ -128,8 +145,7 @@ app.get("/api/projects/:id/files", (req, res) => {
   try {
     const project = getProject(req.params.id);
     if (!project) return res.status(404).json({ error: "Project not found." });
-    const files = listAllFiles(project.root_path);
-    res.json({ project, files });
+    res.json({ project, files: listAllFiles(project.root_path) });
   } catch (error) {
     res.status(400).json({ error: error.message || "Unable to list project files." });
   }
@@ -158,7 +174,7 @@ app.post("/api/projects/:id/file", (req, res) => {
 
 app.post("/api/chat", async (req, res) => {
   try {
-    const { message, projectId, providerId } = req.body || {};
+    const { message, projectId, providerId, providerType, modelId } = req.body || {};
     if (!message || !String(message).trim()) {
       return res.status(400).json({ error: "Message cannot be empty." });
     }
@@ -167,7 +183,7 @@ app.post("/api/chat", async (req, res) => {
     const provider = providerId ? rows.find((row) => row.id === providerId) : rows[0];
     if (!provider) {
       return res.status(400).json({
-        error: "No provider is configured. Add an OpenAI-compatible provider under Integrations before sending a chat request.",
+        error: "No provider is configured. Add a provider under Integrations before sending a chat request.",
         requiresConfig: true
       });
     }
@@ -176,28 +192,27 @@ app.post("/api/chat", async (req, res) => {
     const config = {
       id: provider.id,
       name: provider.name,
-      providerType: provider.provider_type,
+      providerType: normalizeProviderType(provider.provider_type || providerType || "openai-compatible"),
       baseUrl: provider.base_url,
       apiKey,
-      modelId: provider.model_id || req.body.modelId || "gpt-4o-mini",
+      modelId: provider.model_id || modelId || "gpt-4o-mini",
       allowLocal: Boolean(provider.allow_local)
     };
 
     const project = projectId ? getProject(projectId) : null;
     let promptContext = "";
     if (project) {
-      const fileList = listAllFiles(project.root_path).slice(0, 12).map((item) => item.path).join("\n");
+      const fileList = listAllFiles(project.root_path).slice(0, 15).map((item) => item.path).join("\n");
       promptContext = `Project: ${project.name}\nFiles:\n${fileList || "No files yet."}`;
     }
 
     const response = await callProviderChat(config, [
-      { role: "system", content: "You are Clode, a project-aware AI engineering assistant. Answer clearly, cite missing information, and avoid claiming unsupported features. Keep the response concise and practical." },
+      { role: "system", content: "You are Clode, a secure project-aware AI engineering assistant. Be clear, honest, and explicit about required configuration or missing capabilities. Never pretend a feature exists without real provider support." },
       { role: "user", content: `${promptContext}\n\nUser request:\n${message}` }
     ]);
 
     res.json({ ok: true, answer: response.content, provider: response.provider, model: response.model, usage: response.usage || null });
   } catch (error) {
-    console.error("chat-error", error);
     res.status(500).json({ error: error.message || "Chat request failed." });
   }
 });
@@ -222,3 +237,4 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, () => {
   console.log(`Clode AI Workbench running at http://localhost:${PORT}`);
 });
+
